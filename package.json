@@ -1,5 +1,19 @@
 {
+  "name": "langgraph-purchasing-agents",
+  "version": "1.0.0",
+  "description": "Purchasing agent group with specialized AI agents and custom tools",
+  "scripts": {
+    "quick-start": "ts-node purchasing-agents/quick-start.ts",
+    "examples": "ts-node purchasing-agents/main.ts",
+    "build": "tsc -p purchasing-agents/tsconfig.json"
+  },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.23"
+    "@anthropic-ai/claude-agent-sdk": "^0.1.23",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "ts-node": "^10.9.0"
   }
 }
