@@ -32,6 +32,7 @@ export interface POItem {
   outstandingQty: number;
   outstandingAmount: number;
   daysAway: number;
+  status: string; // Confirmed, Unknown, Pending, etc.
 }
 
 export interface ItemAnalysis {
@@ -183,7 +184,8 @@ function parseIncomingPOs(rows: PODataRow[]): POItem[] {
         expectedDate,
         outstandingQty: row['Outstanding Qty'],
         outstandingAmount: row['Outstanding Amount'],
-        daysAway
+        daysAway,
+        status: row['Receipt Date Status']
       });
     }
   }
@@ -367,10 +369,31 @@ export function analyzeSupplyData(rows: PODataRow[]): ItemAnalysis[] {
     );
 
     const reasoning = [...orderRec.reasoning];
+
+    // Critical risk flags
     if (isStockout) reasoning.push('Currently out of stock');
     if (hasDemandAllocation) reasoning.push('Has allocated SO demand');
     if (coverage < 14) reasoning.push('Low coverage');
+
+    // Trend analysis
     if (trend.category === 'GROWING') reasoning.push('Demand growing');
+    if (trend.category === 'DECLINING') reasoning.push('Demand declining');
+
+    // PO reliability issues
+    const unknownPOs = pos.filter(po => po.status?.toLowerCase() === 'unknown');
+    if (unknownPOs.length > 0) {
+      reasoning.push(`${unknownPOs.length} PO(s) with unknown status`);
+    }
+
+    // High-value item warnings
+    if (masterRow['ABC Category'].startsWith('A') && coverage < 30) {
+      reasoning.push('High-value item needs attention');
+    }
+
+    // Demand allocation warnings
+    if (hasDemandAllocation && totalSOQty > totalOutstanding) {
+      reasoning.push('Allocated demand exceeds incoming');
+    }
 
     const orderByDate = orderRec.shouldOrder
       ? calculateOrderByDate(coverage, avgDailySales, nextArrival?.daysAway || null)
@@ -413,15 +436,28 @@ export function analyzeSupplyData(rows: PODataRow[]): ItemAnalysis[] {
 }
 
 /**
- * Generate sample data for testing
+ * Generate sample data for testing - Comprehensive realistic scenarios
  */
 export function generateSampleData(): string {
   return `Order no\tVendor Name\tMPN\tDescription\tService Class\tABC Category\tReceipt Date Status\tExpected Receipt Date\tOutstanding Qty\tOutstanding Amount\tQty on stock\tSale This Month\tSale-1M\tSale-2M\tSale-3M\tSale-4M\tSale-5M\tSale-6M\tSO Qty\tDemand Allocation
-PO-001\tACME Corp\tWIDGET-100\tPremium Widget Assembly\tA1\tA-High\tPending\t2025-11-15\t500\t12500\t50\t120\t110\t105\t80\t75\t70\t65\t200\tYes
-PO-002\tTech Supplies\tGADGET-200\tStandard Gadget\tB2\tB-Medium\tPending\t2025-11-20\t300\t4500\t150\t40\t45\t42\t50\t48\t46\t44\t80\tNo
-PO-003\tGlobal Parts\tCOMPONENT-300\tBasic Component\tC3\tC-Low\tPending\t2025-12-01\t1000\t3000\t0\t15\t18\t16\t14\t12\t10\t8\t50\tYes
-PO-004\tACME Corp\tWIDGET-100\tPremium Widget Assembly\tA1\tA-High\tPending\t2025-12-10\t300\t7500\t50\t120\t110\t105\t80\t75\t70\t65\t200\tYes
-PO-005\tIndustrial Supply\tMOTOR-400\tHeavy Duty Motor\tA2\tA-High\tPending\t2025-11-25\t100\t25000\t25\t8\t10\t12\t14\t15\t16\t18\t30\tNo
-PO-006\tTech Supplies\tSENSOR-500\tTemperature Sensor\tB1\tB-Medium\tPending\t2025-11-18\t200\t2000\t80\t25\t22\t20\t18\t15\t12\t10\t0\tNo
-PO-007\tGlobal Parts\tFASTENER-600\tStainless Steel Bolt\tD1\tD-Very Low\tPending\t2025-12-15\t5000\t500\t1200\t50\t55\t52\t48\t45\t42\t40\t0\tNo`;
+PO-2401\tUbiquiti (Taiwan) Sales\tUXG-MAX\tUniFi Gateway Max Router\tAA\tAA-High\tUnknown\t2025-11-20\t20\t23000\t22\t151\t122\t96\t68\t73\t132\t107\t5\tNo
+PO-2402\tUbiquiti (Taiwan) Sales\tUWB-XG\tUniFi WiFi BaseStation XG\tBA\tBA-High\tConfirmed\t2025-11-18\t50\t12500\t45\t42\t38\t41\t35\t32\t30\t28\t19\tYes
+PO-2403\tUbiquiti (Taiwan) Sales\tUVC-G5-TURRET-ULTRA\tUniFi G5 Turret Ultra Camera\tAA\tAA-High\tConfirmed\t2025-11-15\t6\t1800\t1279\t0\t1835\t872\t949\t840\t1535\t2574\t6\tYes
+PO-2404\tUbiquiti (Taiwan) Sales\tLTU-LITE\tLiteBeam 5AC Gen2\tCA\tCA-Medium\tUnknown\t2025-11-25\t50\t2500\t125\t0\t0\t0\t0\t43\t35\t28\t0\tNo
+PO-2405\tUbiquiti (Taiwan) Sales\tUDM-PRO\tUniFi Dream Machine Pro\tBA\tBA-High\tConfirmed\t2025-11-12\t100\t35000\t45\t85\t92\t88\t75\t68\t72\t80\t25\tNo
+PO-2406\tUbiquiti (Taiwan) Sales\tUSW-PRO-24-POE\tUniFi Switch Pro 24 PoE\tAA\tAA-High\tUnknown\t2025-11-22\t25\t8750\t18\t62\t58\t55\t48\t52\t60\t65\t10\tNo
+PO-2407\tUbiquiti (Taiwan) Sales\tU6-ENTERPRISE\tUniFi 6 Enterprise AP\tBA\tBA-High\tConfirmed\t2025-11-16\t80\t24000\t95\t48\t52\t45\t42\t38\t35\t40\t0\tNo
+PO-2408\tUbiquiti (Taiwan) Sales\tUCK-G2-PLUS\tUniFi Cloud Key Gen2 Plus\tCB\tCB-Medium\tPending\t2025-12-01\t150\t15000\t220\t35\t32\t28\t30\t25\t22\t20\t5\tNo
+PO-2409\tUbiquiti (Taiwan) Sales\tUA-PRO\tUniFi Access Pro Reader\tDD\tDD-Low\tConfirmed\t2025-11-28\t200\t4000\t580\t12\t15\t14\t10\t11\t13\t12\t0\tNo
+PO-2410\tUbiquiti (Taiwan) Sales\tNANO-BEAM-5AC-G2\tNanoBeam 5AC Gen2\tCA\tCA-Medium\tUnknown\t2025-12-05\t75\t5625\t35\t28\t32\t35\t42\t45\t48\t52\t8\tNo
+PO-2411\tUbiquiti (Taiwan) Sales\tUSW-FLEX-MINI\tUniFi Switch Flex Mini\tDB\tDB-Low\tConfirmed\t2025-11-20\t300\t9000\t450\t22\t25\t20\t18\t16\t15\t14\t0\tNo
+PO-2412\tUbiquiti (Taiwan) Sales\tUVC-G4-DOORBELL-PRO\tUniFi G4 Doorbell Pro\tBA\tBA-High\tPending\t2025-11-14\t50\t12500\t12\t55\t62\t58\t52\t48\t45\t42\t15\tYes
+PO-2413\tUbiquiti (Taiwan) Sales\tUDR\tUniFi Dream Router\tCB\tCB-Medium\tConfirmed\t2025-11-18\t120\t18000\t185\t38\t42\t35\t32\t28\t25\t30\t0\tNo
+PO-2414\tUbiquiti (Taiwan) Sales\tUXG-MAX\tUniFi Gateway Max Router\tAA\tAA-High\tUnknown\t2025-12-10\t15\t17250\t22\t151\t122\t96\t68\t73\t132\t107\t5\tNo
+PO-2415\tUbiquiti (Taiwan) Sales\tU6-LITE\tUniFi 6 Lite AP\tCA\tCA-Medium\tConfirmed\t2025-11-19\t200\t20000\t125\t45\t48\t42\t38\t35\t32\t30\t0\tNo
+PO-2416\tUbiquiti (Taiwan) Sales\tUSP-PDU-PRO\tUniFi SmartPower PDU Pro\tBA\tBA-High\tPending\t2025-11-30\t40\t16000\t8\t18\t22\t25\t28\t32\t35\t38\t5\tNo
+PO-2417\tUbiquiti (Taiwan) Sales\tUVC-G4-BULLET\tUniFi G4 Bullet Camera\tCB\tCB-Medium\tConfirmed\t2025-11-17\t100\t15000\t165\t32\t35\t30\t28\t25\t22\t20\t0\tNo
+PO-2418\tUbiquiti (Taiwan) Sales\tUA-HUB\tUniFi Access Hub\tDB\tDB-Low\tUnknown\t2025-12-08\t80\t4800\t150\t8\t10\t12\t15\t18\t20\t22\t0\tNo
+PO-2419\tUbiquiti (Taiwan) Sales\tAIR-CUBE-ISP\tairCube ISP AP\tDD\tDD-Low\tConfirmed\t2025-11-25\t150\t2250\t380\t5\t6\t8\t10\t12\t15\t18\t0\tNo
+PO-2420\tUbiquiti (Taiwan) Sales\tUVC-AI-BULLET\tUniFi AI Bullet Camera\tAA\tAA-High\tPending\t2025-11-13\t30\t12000\t5\t42\t45\t48\t52\t58\t62\t68\t12\tYes`;
 }

@@ -276,7 +276,12 @@ function ItemCard({ item, rank, onClick }: { item: ItemAnalysis; rank: number; o
               <div className="bg-gray-50 rounded p-2">
                 <div className="text-xs text-gray-600">Incoming</div>
                 <div className="text-lg font-bold">{item.totalOutstanding.toLocaleString()}</div>
-                <div className="text-xs text-gray-500 mt-1">{item.pos.length} POs</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {item.pos.length} POs
+                  {item.pos.some(po => po.status?.toLowerCase() === 'unknown') && (
+                    <span className="text-orange-600 ml-1">⚠️</span>
+                  )}
+                </div>
               </div>
 
               <div className="bg-gray-50 rounded p-2">
